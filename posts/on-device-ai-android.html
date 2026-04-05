@@ -1,0 +1,124 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Building fully local LLM inference on Android with llama.cpp</title>
+  <meta name="description" content="Notes from building a fully local Android LLM app with llama.cpp, Kotlin, GGUF models, and a lightweight retrieval flow.">
+  <link rel="stylesheet" href="../styles.css">
+</head>
+<body>
+  <div class="article">
+    <a class="back-link" href="../index.html">Back to home</a>
+    <header class="article-header">
+      <p class="eyebrow">Build Log</p>
+      <h1>Building fully local LLM inference on Android with llama.cpp</h1>
+      <p class="lede">
+        A short project note on getting a local Android chatbot running with GGUF models,
+        Kotlin UI code, and a small retrieval experiment for grounded answers.
+      </p>
+    </header>
+
+    <article class="article-body">
+      <h2>What I built</h2>
+      <p>
+        The end result is a simple Android app that runs a GGUF model entirely on-device.
+        The app imports a model file, copies it into app-private storage, loads it through
+        the Android llama.cpp binding, and answers prompts without relying on a cloud backend.
+      </p>
+
+      <h2>Integration path</h2>
+      <p>
+        I initially tried integrating the Android llama.cpp pieces directly into a custom app.
+        That path exposed the hard part of on-device AI on Android: the UI is easy, but native
+        packaging is not. After repeated CMake, ABI, and backend-loading issues, I moved to the
+        official <code>examples/llama.android</code> project as the base integration and then
+        customized the app layer from there.
+      </p>
+
+      <h2>How the app works</h2>
+      <p>
+        The runtime flow is straightforward once the native setup is correct:
+      </p>
+      <ol>
+        <li>Select a GGUF file through Android's document picker.</li>
+        <li>Parse GGUF metadata to inspect the selected model.</li>
+        <li>Copy the model into <code>filesDir/models</code>.</li>
+        <li>Initialize the inference engine through <code>AiChat.getInferenceEngine(...)</code>.</li>
+        <li>Load the model with <code>engine.loadModel(modelFile.path)</code>.</li>
+        <li>Send a prompt and collect generated tokens through Kotlin <code>Flow</code>.</li>
+      </ol>
+
+      <h2>Kotlin app layer</h2>
+      <p>
+        Kotlin handled the user-facing flow: selecting a GGUF file, copying it into app-private
+        storage, initializing the inference engine, sending prompts, and rendering streaming output
+        in the UI. The native model runtime stayed inside the llama.cpp Android binding.
+      </p>
+
+      <h2>Retrieval experiment</h2>
+      <p>
+        I also explored a lightweight retrieval flow for source-grounded answers. The first pass
+        used simple query embedding and matching experiments. For a leaner proof of concept, I
+        later tested a lightweight in-memory retrieval layer and compared prompt behavior across
+        small GGUF instruct models. The main lesson was that retrieval can work while weaker models
+        still fail to answer grounded questions well. Model quality matters a lot.
+      </p>
+
+      <h2>Build issues encountered</h2>
+      <p>
+        Most of the work was not in the UI. The hard issues were native and packaging related:
+      </p>
+      <ul>
+        <li>CMake path and <code>add_subdirectory</code> mistakes while integrating llama.cpp into a separate Android project.</li>
+        <li>Gradle plugin and version-catalog mismatches when trying to reuse the sample modules elsewhere.</li>
+        <li>Android ABI mismatches between emulator/device and packaged native libraries.</li>
+        <li>Minimum SDK and AndroidX configuration mismatches across modules.</li>
+        <li>Backend loading failures such as native runtime errors where no GGML backend was available at model load time.</li>
+        <li>Instruction-following differences across smaller GGUF models during the retrieval experiment.</li>
+      </ul>
+
+      <h2>Why the official sample mattered</h2>
+      <p>
+        The official Android sample already solves the hard native integration layer. Reusing that
+        base was the pragmatic move because it let me focus on application logic instead of
+        fighting backend packaging issues repeatedly.
+      </p>
+
+      <h2>How to run</h2>
+      <ol>
+        <li>Open <code>examples/llama.android</code> in Android Studio.</li>
+        <li>Sync Gradle and build the project.</li>
+        <li>Run the app on a compatible Android device or emulator.</li>
+        <li>Pick a GGUF model from storage.</li>
+        <li>Wait for the model to copy into app-private storage and load.</li>
+        <li>Send prompts and observe local inference output.</li>
+      </ol>
+
+      <h2>How to debug</h2>
+      <p>
+        The fastest debugging path was Logcat. The most useful signals were:
+      </p>
+      <ul>
+        <li>Device ABI logs to confirm the app was running under the expected architecture.</li>
+        <li>Model import path logs to verify the GGUF was copied into private storage correctly.</li>
+        <li>Native engine logs during <code>loadModel()</code> to spot backend-loading failures.</li>
+        <li>Prompt and retrieval debug logs to verify whether context was actually being passed to the model.</li>
+        <li>Token stream logs to distinguish between model failure and retrieval failure.</li>
+      </ul>
+
+      <h2>Useful checks</h2>
+      <pre><code>adb logcat | grep -E "ABI|RAG_|InferenceEngineImpl|ai-chat"</code></pre>
+      <pre><code>adb shell ls -l /data/user/0/&lt;package-name&gt;/files/models</code></pre>
+      <pre><code>unzip -l app-debug.apk | grep "lib/"</code></pre>
+
+      <h2>Main lesson</h2>
+      <p>
+        On-device AI is not only about loading a model. Native packaging, ABI compatibility,
+        backend loading, prompt structure, and model choice all matter. Once the integration
+        foundation is stable, the Kotlin app layer becomes straightforward.
+      </p>
+    </article>
+  </div>
+</body>
+</html>
